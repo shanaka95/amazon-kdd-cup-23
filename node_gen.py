@@ -10,7 +10,8 @@ import colorsys
 import os
 from node2vec import Node2Vec
 import pickle
-from config import TEST_MODE
+from config import TEST_MODE, USE_GPU, GPU_ID, NUM_WORKERS
+import torch
 
 class SessionGraphBuilder:
     def __init__(self, save_dir: str = "graph_data", test_mode: bool = False):
@@ -378,7 +379,7 @@ class SessionGraphBuilder:
         print(f"Legend saved to {legend_path}")
 
     def train_node2vec(self, dimensions: int = 128, walk_length: int = 10, 
-                      num_walks: int = 100, workers: int = 4, window: int = 5, 
+                      num_walks: int = 100, window: int = 5, 
                       min_count: int = 1, batch_words: int = 4) -> None:
         """
         Train Node2Vec model on the graph and save embeddings
@@ -387,28 +388,50 @@ class SessionGraphBuilder:
             dimensions: Embedding dimensions
             walk_length: Length of each random walk
             num_walks: Number of random walks per node
-            workers: Number of parallel workers
             window: Maximum distance between current and predicted word
             min_count: Minimum count of node occurrences
             batch_words: Number of words per batch
         """
         print("\nTraining Node2Vec model...")
         
-        # Initialize and train Node2Vec model
+        # Check if CUDA is available when GPU is requested
+        device = 'cuda' if USE_GPU and torch.cuda.is_available() else 'cpu'
+        if device == 'cuda':
+            print(f"Using GPU device {GPU_ID}")
+            torch.cuda.set_device(GPU_ID)
+        else:
+            print("Using CPU for training")
+        
+        # Initialize Node2Vec model with GPU support
         node2vec = Node2Vec(
-            self.graph,
+            graph=self.graph,
             dimensions=dimensions,
             walk_length=walk_length,
             num_walks=num_walks,
-            workers=workers
+            workers=NUM_WORKERS,  # Number of parallel workers
+            device=device,  # Use GPU if available
+            # Additional parameters for better GPU utilization
+            p=1,  # Return parameter
+            q=1,  # In-out parameter
+            batch_walks=None,  # Walks per batch (None = automatically determine)
+            seed=42,  # Random seed for reproducibility
+            verbose=True  # Print progress
         )
         
+        print("\nGenerating walks...")
         # Train the model
         model = node2vec.fit(
             window=window,
             min_count=min_count,
-            batch_words=batch_words
+            batch_words=batch_words,
+            seed=42,
+            workers=NUM_WORKERS,  # Use multiple workers for training
+            compute_loss=True  # Track training loss
         )
+        
+        # Move model to CPU for saving
+        if device == 'cuda':
+            model = model.to('cpu')
         
         # Save the complete model
         model_path = self.save_dir / "node2vec_model.pkl"
@@ -417,17 +440,25 @@ class SessionGraphBuilder:
         
         # Save word vectors separately for easier loading
         vectors_path = self.save_dir / "node2vec_vectors.pkl"
+        vectors_dict = dict(zip(model.wv.index_to_key, model.wv.vectors))
         with open(vectors_path, 'wb') as f:
-            pickle.dump(dict(zip(model.wv.index_to_key, model.wv.vectors)), f)
+            pickle.dump(vectors_dict, f)
             
-        print(f"Model saved to {model_path}")
+        print(f"\nModel saved to {model_path}")
         print(f"Vectors saved to {vectors_path}")
+        
+        # Print training statistics
+        print("\nTraining Statistics:")
+        print(f"Total nodes processed: {len(model.wv.index_to_key)}")
+        print(f"Embedding dimensions: {dimensions}")
+        if hasattr(model, 'running_training_loss'):
+            print(f"Final training loss: {model.running_training_loss}")
         
         # Print example embeddings for first few nodes
         print("\nExample embeddings:")
         for node in list(self.graph.nodes())[:3]:
             print(f"Node {node} embedding shape: {model.wv[node].shape}")
-    
+            
     @staticmethod
     def load_node2vec_vectors(save_dir: str = "graph_data") -> Dict[str, np.ndarray]:
         """
@@ -441,7 +472,9 @@ class SessionGraphBuilder:
         """
         vectors_path = Path(save_dir) / "node2vec_vectors.pkl"
         with open(vectors_path, 'rb') as f:
-            return pickle.load(f)
+            vectors = pickle.load(f)
+        print(f"\nLoaded {len(vectors)} node embeddings")
+        return vectors
 
 def main():
     # Initialize graph builder with test mode from environment

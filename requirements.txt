@@ -4,3 +4,5 @@ pandas
 scipy
 scikit-learn
 scikit-fuzzy
+node2vec
+dotenv
