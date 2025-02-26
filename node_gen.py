@@ -10,7 +10,7 @@ import colorsys
 import os
 from node2vec import Node2Vec
 import pickle
-from config import TEST_MODE, USE_GPU, GPU_ID, NUM_WORKERS
+from config import TEST_MODE, USE_GPU, GPU_ID, NUM_WORKERS, VISUALIZE_GRAPH
 import torch
 
 class SessionGraphBuilder:
@@ -238,7 +238,8 @@ class SessionGraphBuilder:
         edges = [(u, v, d['weight']) for u, v, d in self.graph.edges(data=True)]
         return sorted(edges, key=lambda x: x[2], reverse=True)[:n]
 
-    def visualize_graph(self, filename: str = "session_graph.html", height: str = "750px", width: str = "100%"):
+    def visualize_graph(self, filename: str = "session_graph.html", height: str = "750px", width: str = "100%", 
+                      max_nodes: int = 1000):
         """
         Create an interactive visualization of the graph
         
@@ -246,48 +247,78 @@ class SessionGraphBuilder:
             filename: Name of the output HTML file
             height: Height of the visualization
             width: Width of the visualization
+            max_nodes: Maximum number of nodes to visualize (for memory management)
         """
+        print("\nPreparing graph visualization...")
+        
+        # If graph is too large, sample nodes
+        nodes_to_visualize = set()
+        if len(self.graph.nodes()) > max_nodes:
+            print(f"\nGraph is too large ({len(self.graph.nodes())} nodes). Sampling {max_nodes} nodes for visualization...")
+            # Sample nodes with highest degrees
+            degrees = dict(self.graph.degree(weight='weight'))
+            sorted_nodes = sorted(degrees.items(), key=lambda x: x[1], reverse=True)
+            nodes_to_visualize = set(node for node, _ in sorted_nodes[:max_nodes])
+            subgraph = self.graph.subgraph(nodes_to_visualize)
+        else:
+            subgraph = self.graph
+            nodes_to_visualize = set(self.graph.nodes())
+        
+        print(f"Creating visualization with {len(nodes_to_visualize)} nodes...")
+        
         # Create a Pyvis network
         net = Network(height=height, width=width, notebook=False, directed=True)
         
-        # Calculate node sizes based on degree centrality
-        degree_dict = dict(self.graph.degree(weight='weight'))
+        # Calculate node properties
+        print("Calculating node properties...")
+        degree_dict = dict(subgraph.degree(weight='weight'))
         max_degree = max(degree_dict.values()) if degree_dict and degree_dict.values() else 1
         
-        # Calculate node colors based on in/out degree ratio
-        in_degree_dict = dict(self.graph.in_degree(weight='weight'))
-        out_degree_dict = dict(self.graph.out_degree(weight='weight'))
+        in_degree_dict = dict(subgraph.in_degree(weight='weight'))
+        out_degree_dict = dict(subgraph.out_degree(weight='weight'))
         
         def get_node_color(node):
             in_deg = in_degree_dict.get(node, 0)
             out_deg = out_degree_dict.get(node, 0)
             total = in_deg + out_deg
             if total == 0:
-                return "#808080"  # Gray for isolated nodes
-            # Use hue to represent in/out ratio (red for more incoming, blue for more outgoing)
+                return "#808080"
             hue = 0.66 if out_deg > in_deg else 0.0
             saturation = min(abs(out_deg - in_deg) / total, 1.0)
             rgb = colorsys.hsv_to_rgb(hue, saturation, 0.9)
             return f"#{int(rgb[0]*255):02x}{int(rgb[1]*255):02x}{int(rgb[2]*255):02x}"
         
-        # Add nodes with size and color based on properties
-        for node in self.graph.nodes():
-            size = 20 + (30 * degree_dict[node] / max_degree) if max_degree > 0 else 20
-            color = get_node_color(node)
-            title = f"ID: {node}<br>In-degree: {in_degree_dict.get(node, 0)}<br>Out-degree: {out_degree_dict.get(node, 0)}"
-            net.add_node(node, size=size, color=color, title=title)
+        # Add nodes in batches
+        print("Adding nodes to visualization...")
+        nodes_list = list(subgraph.nodes())
+        batch_size = 100
+        for i in range(0, len(nodes_list), batch_size):
+            batch = nodes_list[i:i+batch_size]
+            for node in batch:
+                size = 20 + (30 * degree_dict[node] / max_degree) if max_degree > 0 else 20
+                color = get_node_color(node)
+                title = f"ID: {node}<br>In-degree: {in_degree_dict.get(node, 0)}<br>Out-degree: {out_degree_dict.get(node, 0)}"
+                net.add_node(node, size=size, color=color, title=title)
+            print(f"Processed {min(i+batch_size, len(nodes_list))}/{len(nodes_list)} nodes", end='\r')
+        print()  # New line after progress
         
-        # Add edges with width based on weight
-        edge_weights = nx.get_edge_attributes(self.graph, 'weight')
+        # Add edges in batches
+        print("Adding edges to visualization...")
+        edge_weights = nx.get_edge_attributes(subgraph, 'weight')
         max_weight = max(edge_weights.values()) if edge_weights else 1
         
-        for edge in self.graph.edges(data=True):
-            source, target, data = edge
-            weight = data.get('weight', 1)
-            width = 1 + (4 * weight / max_weight)
-            title = f"Weight: {weight}"
-            net.add_edge(source, target, width=width, title=title)
+        edges_list = list(subgraph.edges(data=True))
+        for i in range(0, len(edges_list), batch_size):
+            batch = edges_list[i:i+batch_size]
+            for source, target, data in batch:
+                weight = data.get('weight', 1)
+                width = 1 + (4 * weight / max_weight)
+                title = f"Weight: {weight}"
+                net.add_edge(source, target, width=width, title=title)
+            print(f"Processed {min(i+batch_size, len(edges_list))}/{len(edges_list)} edges", end='\r')
+        print()  # New line after progress
         
+        print("Configuring visualization physics...")
         # Configure physics
         net.set_options("""
         var options = {
@@ -311,20 +342,23 @@ class SessionGraphBuilder:
         """)
         
         # Save the visualization
+        print("Saving visualization...")
         output_path = self.save_dir / filename
         net.save_graph(str(output_path))
-        print(f"\nVisualization saved to {output_path}")
+        print(f"Visualization saved to {output_path}")
         
         # Print debug information
         print("\nGraph Debug Information:")
-        print(f"Total nodes: {len(self.graph.nodes())}")
-        print(f"Total edges: {len(self.graph.edges())}")
-        print(f"Nodes with edges: {len([n for n in self.graph.nodes() if self.graph.degree(n) > 0])}")
-        print(f"Isolated nodes: {len([n for n in self.graph.nodes() if self.graph.degree(n) == 0])}")
+        print(f"Total nodes in original graph: {len(self.graph.nodes())}")
+        print(f"Nodes in visualization: {len(nodes_to_visualize)}")
+        print(f"Total edges in visualization: {len(subgraph.edges())}")
+        print(f"Nodes with edges: {len([n for n in subgraph.nodes() if subgraph.degree(n) > 0])}")
+        print(f"Isolated nodes: {len([n for n in subgraph.nodes() if subgraph.degree(n) == 0])}")
         if edge_weights:
             print(f"Edge weight range: {min(edge_weights.values())} to {max(edge_weights.values())}")
         
         # Generate legend file
+        print("Generating legend...")
         legend_html = """
         <html>
         <head>
@@ -491,9 +525,14 @@ def main():
     # Save graph data
     builder.save_graph_data()
     
-    # Create visualization
-    builder.visualize_graph()
+    # Create visualization only if enabled
+    if VISUALIZE_GRAPH:
+        print("Visualizing graph...")
+        builder.visualize_graph()
+    else:
+        print("Graph visualization disabled. Set VISUALIZE_GRAPH=true in .env to enable.")
     
+    print("Training Node2Vec model...")
     # Train and save Node2Vec model
     builder.train_node2vec()
     

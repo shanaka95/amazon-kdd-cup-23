@@ -13,6 +13,9 @@ HF_MODEL_NAME = os.getenv('HF_MODEL_NAME', 'intfloat/multilingual-e5-large')
 # Test mode configuration
 TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 
+# Visualization Configuration
+VISUALIZE_GRAPH = os.getenv('VISUALIZE_GRAPH', 'false').lower() == 'true'
+
 # GPU Configuration
 USE_GPU = os.getenv('USE_GPU', 'true').lower() == 'true'
 GPU_ID = int(os.getenv('GPU_ID', '0'))
