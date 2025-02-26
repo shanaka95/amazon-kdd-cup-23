@@ -1,0 +1,51 @@
+# Environment variables
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+embeddings/
+graph_data/
+*.csv
+*.pkl
+*.npy
+*.graphml
+*.html
+
+node2vec_vectors.pkl
+node2vec_model.bin
+node2vec_model.bin.syn1neg.npy
+node2vec_model.bin.wv.npy
+node2vec_model.bin.wv.vectors.npy

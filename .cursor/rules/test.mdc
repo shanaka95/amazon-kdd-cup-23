@@ -1,0 +1,9 @@
+---
+description: products_train.csv and sessions_train.csv are very large files. do not read the whole files. But read top part of the file and get an idea about the data format. Create necessary files and databases
+globs: 
+---
+
+# Your rule content
+
+- You can @ files here
+- You can use markdown but dont have to
