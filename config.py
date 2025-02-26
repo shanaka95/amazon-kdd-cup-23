@@ -16,9 +16,7 @@ TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 # Visualization Configuration
 VISUALIZE_GRAPH = os.getenv('VISUALIZE_GRAPH', 'false').lower() == 'true'
 
-# GPU Configuration
-USE_GPU = os.getenv('USE_GPU', 'true').lower() == 'true'
-GPU_ID = int(os.getenv('GPU_ID', '0'))
+# Number of worker processes
 NUM_WORKERS = int(os.getenv('NUM_WORKERS', '4'))
 
 def validate_config():
@@ -27,12 +25,4 @@ def validate_config():
         raise ValueError("HF_API_TOKEN environment variable is not set. Please check your .env file.")
     
     if not HF_MODEL_NAME:
-        raise ValueError("HF_MODEL_NAME environment variable is not set. Please check your .env file.")
-    
-    if GPU_ID >= 0 and USE_GPU:
-        try:
-            import torch
-            if not torch.cuda.is_available():
-                print("Warning: GPU requested but CUDA is not available. Falling back to CPU.")
-        except ImportError:
-            print("Warning: PyTorch not installed. GPU acceleration will not be available.") 
+        raise ValueError("HF_MODEL_NAME environment variable is not set. Please check your .env file.") 

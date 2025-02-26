@@ -10,8 +10,7 @@ import colorsys
 import os
 from node2vec import Node2Vec
 import pickle
-from config import TEST_MODE, USE_GPU, GPU_ID, NUM_WORKERS, VISUALIZE_GRAPH
-import torch
+from config import TEST_MODE, NUM_WORKERS, VISUALIZE_GRAPH
 
 class SessionGraphBuilder:
     def __init__(self, save_dir: str = "graph_data", test_mode: bool = False):
@@ -428,28 +427,16 @@ class SessionGraphBuilder:
         """
         print("\nTraining Node2Vec model...")
         
-        # Check if CUDA is available when GPU is requested
-        device = 'cuda' if USE_GPU and torch.cuda.is_available() else 'cpu'
-        if device == 'cuda':
-            print(f"Using GPU device {GPU_ID}")
-            torch.cuda.set_device(GPU_ID)
-        else:
-            print("Using CPU for training")
-        
-        # Initialize Node2Vec model with GPU support
+        # Initialize Node2Vec model
         node2vec = Node2Vec(
             graph=self.graph,
             dimensions=dimensions,
             walk_length=walk_length,
             num_walks=num_walks,
             workers=NUM_WORKERS,  # Number of parallel workers
-            device=device,  # Use GPU if available
-            # Additional parameters for better GPU utilization
             p=1,  # Return parameter
             q=1,  # In-out parameter
-            batch_walks=None,  # Walks per batch (None = automatically determine)
-            seed=42,  # Random seed for reproducibility
-            verbose=True  # Print progress
+            seed=42  # Random seed for reproducibility
         )
         
         print("\nGenerating walks...")
@@ -462,10 +449,6 @@ class SessionGraphBuilder:
             workers=NUM_WORKERS,  # Use multiple workers for training
             compute_loss=True  # Track training loss
         )
-        
-        # Move model to CPU for saving
-        if device == 'cuda':
-            model = model.to('cpu')
         
         # Save the complete model
         model_path = self.save_dir / "node2vec_model.pkl"
