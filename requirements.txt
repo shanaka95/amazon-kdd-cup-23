@@ -1,0 +1,6 @@
+pyvis
+numpy
+pandas
+scipy
+scikit-learn
+scikit-fuzzy
